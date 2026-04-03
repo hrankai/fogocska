@@ -409,20 +409,24 @@ function updateMarkers() {
         const popupText = p.name + statsText;
 
         const dist = getDistance(state.user.lat, state.user.lon, p.lat, p.lon);
-        let isVisibleOnMap = true;
+        let isVisibleOnMap = false;
+        let shouldShowRadar = false;
         
-        // 1. Chasers only flash on the map for 3s every 15s
-        if (p.role === 'chaser') {
-            const cycleTime = now % 15000;
-            if (cycleTime > 3000) {
-                isVisibleOnMap = false;
-            }
-        }
-        
-        // 2. Runners are invisible if distance > 10m
-        if (p.role === 'runner') {
-            if (dist > 10) {
-                isVisibleOnMap = false;
+        if (p.role === state.user.role) {
+            // Csapattárs: Mindig látszik a nagy térképen, radaron nem!
+            isVisibleOnMap = true;
+            shouldShowRadar = false;
+        } else {
+            // Ellenség:
+            shouldShowRadar = dist > 10 && dist < 500;
+            
+            if (p.role === 'chaser') {
+                // Ha az ellenség Fogó, akkor a nagy térképen csak felvillan (15 mp-enként 3 mp-re)
+                const cycleTime = now % 15000;
+                isVisibleOnMap = cycleTime <= 3000;
+            } else if (p.role === 'runner') {
+                // Ha az ellenség Menekülő, akkor a nagy térképen csak akkor látszik, ha 10 méteren belül van
+                isVisibleOnMap = dist <= 10;
             }
         }
 
@@ -441,9 +445,8 @@ function updateMarkers() {
             }
         }
         
-        // Radar logic: Csak az ELLENSÉGET mutatja (aki más szerepben van mint te)!
+        // Radar logic: Csak az ELLENSÉGET mutatja
         if (state.radarMap) {
-            const shouldShowRadar = dist > 10 && dist < 500 && p.role !== state.user.role;
             if (shouldShowRadar) {
                 if (!state.radarMarkers[id]) {
                     const iconColor = p.role === 'chaser' ? '#ff0055' : '#00f2ff';
@@ -545,7 +548,7 @@ function checkProximity() {
                     playCatchSound();
                     
                     alert("💥 Elkaptad a Menekülő Robotot! Kaptál +1 Pontot a Toplistán!");
-                    if (id === robotId) stopRobot();
+                    if (id === robots.runner.id) stopRobot('runner');
                     // Ha más robotja, csak átállítjuk caught-ra (fentebb meg is történt), az övé majd törli
                     break;
                 }
@@ -585,17 +588,14 @@ function triggerCatch(chaserId) {
 }
 
 // --- VIRTUAL ROBOT LOGIC ---
-let robotId = null;
-let robotInterval = null;
-let currentRobotRole = null;
+let robots = {
+    runner: { id: null, interval: null },
+    chaser: { id: null, interval: null }
+};
 
 function toggleRobot(role) {
-    if (robotId) {
-        const wasRole = currentRobotRole;
-        stopRobot();
-        if (wasRole !== role) {
-            spawnRobot(role);
-        }
+    if (robots[role].id) {
+        stopRobot(role);
     } else {
         spawnRobot(role);
     }
@@ -604,8 +604,9 @@ function toggleRobot(role) {
 function spawnRobot(role) {
     if (!state.user || !state.user.lat) return;
     
-    robotId = 'robot_' + Math.random().toString(36).substr(2, 5);
-    currentRobotRole = role;
+    // Create local id to be captured by intervals securely
+    const robotId = 'robot_' + Math.random().toString(36).substr(2, 5);
+    robots[role].id = robotId;
     
     const btn = document.getElementById(`spawn-${role}-robot`);
     if (btn) btn.innerText = "🛑 Leállítás";
@@ -629,33 +630,79 @@ function spawnRobot(role) {
     const statusRef = db.ref(`games/${state.gameId}/players/${robotId}/status`);
     statusRef.on('value', (snap) => {
         if (snap.val() === 'caught') {
-            stopRobot();
+            stopRobot(role);
         }
     });
 
-    robotInterval = setInterval(() => {
+    robots[role].interval = setInterval(() => {
         if (!state.user || state.isCaught) {
-            stopRobot();
+            stopRobot(role);
             return;
         }
 
         const step = 0.000015; // Kb. 1.5 - 2 méter / mp sebesség
-        const dLat = state.user.lat - rLat;
-        const dLon = state.user.lon - rLon;
-        const dist = Math.sqrt(dLat*dLat + dLon*dLon);
+        
+        let targetLat = null;
+        let targetLon = null;
+        let targetDist = 999999;
+        let nearestId = null;
+        let isTargetRobot = false;
 
-        if (role === 'runner') {
-            // Ha menekülő robot, akkor ELFUT tőled (de csak fél sebességgel, hogy el tudd kapni!)
-            const runnerSpeed = step * 0.5;
-            if (dist < 0.002 && dist > 0.000001) { // Ne fusson el a térképről
-                rLat -= (dLat / dist) * runnerSpeed;
-                rLon -= (dLon / dist) * runnerSpeed;
+        // Intelligens célpontkeresés!
+        for (let pid in state.players) {
+            if (pid === robotId) continue; // Itt a helyi robotId változót használja a closure
+            const p = state.players[pid];
+            if (!p.lat || !p.lon || p.status === 'caught') continue;
+
+            const distInMeters = getDistance(rLat, rLon, p.lat, p.lon);
+            
+            if (role === 'runner') {
+                // Menekülő robot menekül a legközelebbi FOGÓ elől
+                if (p.role === 'chaser' && distInMeters < targetDist) {
+                    targetDist = distInMeters;
+                    targetLat = p.lat;
+                    targetLon = p.lon;
+                    nearestId = pid;
+                    isTargetRobot = pid.startsWith('robot_');
+                }
+            } else if (role === 'chaser') {
+                // Fogó robot kergeti a legközelebbi MENEKÜLŐT
+                if (p.role === 'runner' && distInMeters < targetDist) {
+                    targetDist = distInMeters;
+                    targetLat = p.lat;
+                    targetLon = p.lon;
+                    nearestId = pid;
+                    isTargetRobot = pid.startsWith('robot_');
+                }
             }
-        } else {
-            // Ha fogó robot, akkor KERGET téged
-            if (dist > step) {
-                rLat += (dLat / dist) * step;
-                rLon += (dLon / dist) * step;
+        }
+
+        if (targetLat !== null && targetLon !== null) {
+            const dLat = targetLat - rLat;
+            const dLon = targetLon - rLon;
+            const distGeo = Math.sqrt(dLat*dLat + dLon*dLon);
+            
+            if (role === 'runner') {
+                // Ha menekülő robot, akkor ELFUT a legközelebbi fogótól
+                const runnerSpeed = step * 0.5;
+                if (distGeo < 0.002 && distGeo > 0.000001) { // Ne fusson el a térképről
+                    rLat -= (dLat / distGeo) * runnerSpeed;
+                    rLon -= (dLon / distGeo) * runnerSpeed;
+                }
+            } else if (role === 'chaser') {
+                // Ha fogó robot, akkor KERGETI a legközelebbi menekülőt
+                if (distGeo > step) {
+                    rLat += (dLat / distGeo) * step;
+                    rLon += (dLon / distGeo) * step;
+                }
+                
+                // Ha a fogó robot utolér egy menekülő robotot
+                // Ember menekülőt nem itt kapunk el, mert azt az ember kliense (checkProximity) maga elintézi!
+                if (targetDist <= 4 && isTargetRobot) {
+                    db.ref(`games/${state.gameId}/players/${nearestId}`).update({ status: 'caught' });
+                    // robot statisztikáját is lekönyveljük egy vicces toplistára :)
+                    db.ref(`users/🤖 Fogó Bot/catches`).set(firebase.database.ServerValue.increment(1));
+                }
             }
         }
 
@@ -667,22 +714,26 @@ function spawnRobot(role) {
     }, 1000);
 }
 
-function stopRobot() {
-    if (robotId && state.gameId) {
-        db.ref(`games/${state.gameId}/players/${robotId}/status`).off();
-        db.ref(`games/${state.gameId}/players/${robotId}`).remove();
-        robotId = null;
-    }
-    if (robotInterval) {
-        clearInterval(robotInterval);
-        robotInterval = null;
+function stopRobot(role) {
+    if (!role) {
+        stopRobot('runner');
+        stopRobot('chaser');
+        return;
     }
     
-    currentRobotRole = null;
-    const rnBtn = document.getElementById('spawn-runner-robot');
-    const chBtn = document.getElementById('spawn-chaser-robot');
-    if (rnBtn) rnBtn.innerText = "🏃‍♂️ Menekülő";
-    if (chBtn) chBtn.innerText = "🔴 Fogó";
+    const rId = robots[role].id;
+    if (rId && state.gameId) {
+        db.ref(`games/${state.gameId}/players/${rId}/status`).off();
+        db.ref(`games/${state.gameId}/players/${rId}`).remove();
+        robots[role].id = null;
+    }
+    if (robots[role].interval) {
+        clearInterval(robots[role].interval);
+        robots[role].interval = null;
+    }
+    
+    const btn = document.getElementById(`spawn-${role}-robot`);
+    if (btn) btn.innerText = role === 'runner' ? "🏃‍♂️ Menekülő" : "🔴 Fogó";
 }
 
 // --- AUTH ---
