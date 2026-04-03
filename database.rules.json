@@ -1,0 +1,36 @@
+{
+  "rules": {
+    // Bárki olvashatja a térkép adatokat (hogy lássák a weblapon hol vannak)
+    ".read": true,
+    
+    // A teljes adatbázis legfelső szintű felülírása és TÖRLÉSE szigorúan TILOS.
+    // Ez védi meg az adatbázist a hackerek "mindent törlő" támadásaitól.
+    ".write": false,
+
+    "games": {
+      "$gameId": {
+        // Új szoba létrehozása megengedett, de csak ha helyes adatokat küld
+        ".write": "true",
+        ".validate": "newData.hasChildren(['createdAt']) || !newData.exists()",
+        
+        "players": {
+          "$playerId": {
+            // A játékosok írhatják a saját koordinátáikat be és ki
+            ".write": true,
+            "lat": { ".validate": "newData.isNumber()" },
+            "lon": { ".validate": "newData.isNumber()" }
+          }
+        }
+      }
+    },
+    
+    "users": {
+        "$userName": {
+            // Pontszámokat is írhatják a felhasználók önmaguknak vagy egymásnak
+            ".write": "true",
+            "catches": { ".validate": "newData.isNumber() || !newData.exists()" },
+            "survivalPoints": { ".validate": "newData.isNumber() || !newData.exists()" }
+        }
+    }
+  }
+}

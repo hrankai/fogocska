@@ -461,7 +461,28 @@ function updateMarkers() {
     }
 }
 
-// --- CATCH LOGIC ---
+// --- PWA INSTALL LOGIC ---
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    const installBtn = document.getElementById('install-btn');
+    if (installBtn) installBtn.classList.remove('hidden');
+});
+
+const installBtn = document.getElementById('install-btn');
+if (installBtn) {
+    installBtn.addEventListener('click', async () => {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log(`PWA install prompt answer: ${outcome}`);
+            deferredPrompt = null;
+        } else {
+            alert("Ide kattintva magától szokott települni, de a te rendszered ezt most blokkolja (talán mert egy gépen / nem megfelelő linken nyitottad meg, vagy már telepítve van a telefonodon)!\n\nMEGOLDÁS TELEFONON: Nyisd meg a Böngésződ jobb felső/alsó menüjét, és válaszd a 'Hozzáadás a kezdőképernyőhöz' (Add to Home screen) opciót! Ezzel kipattintja appként!");
+        }
+    });
+}
 let gameStartTime = 0;
 
 function checkProximity() {
