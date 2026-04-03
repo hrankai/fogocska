@@ -429,9 +429,9 @@ function updateMarkers() {
             }
         }
         
-        // Radar logic
+        // Radar logic: Ha nincs a fő térképen (mert 10m-nél messzebb van), akkor mutassa a Radar!
         if (state.radarMap) {
-            const shouldShowRadar = dist > 50 && dist < 500;
+            const shouldShowRadar = dist > 10 && dist < 500;
             if (shouldShowRadar) {
                 if (!state.radarMarkers[id]) {
                     const iconColor = p.role === 'chaser' ? '#ff0055' : '#00f2ff';
