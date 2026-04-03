@@ -489,7 +489,6 @@ function checkProximity() {
     const now = Date.now();
     const graceElapsed = Math.floor((now - gameStartTime) / 1000);
     
-    // Debug updates
     document.getElementById('debug-id').innerText = state.userId ? state.userId.substr(-4) : '-';
     document.getElementById('debug-grace').innerText = 5 - graceElapsed > 0 ? 5 - graceElapsed : 0;
 
@@ -497,28 +496,50 @@ function checkProximity() {
     if (now - gameStartTime < 5000) return; 
 
     const me = state.players[state.userId];
-    if (me.role !== 'runner') return;
     if (!me.lat || !me.lon) return;
 
     let nearestDist = 9999;
 
-    for (let id in state.players) {
-        if (id === state.userId) continue;
+    if (me.role === 'runner') {
+        for (let id in state.players) {
+            if (id === state.userId) continue;
+            const p = state.players[id];
+            if (p.role === 'chaser' && p.lat && p.lon && (now - p.lastSeen < 30000)) {
+                const dist = getDistance(me.lat, me.lon, p.lat, p.lon);
+                if (dist < nearestDist) nearestDist = dist;
 
-        const p = state.players[id];
-        if (p.role === 'chaser' && p.lat && p.lon && (now - p.lastSeen < 30000)) {
-            const dist = getDistance(me.lat, me.lon, p.lat, p.lon);
-            if (dist < nearestDist) nearestDist = dist;
-
-            if (me.lat === 0 || me.lon === 0 || p.lat === 0 || p.lon === 0) continue;
-
-            // GPS szórás kompenzálása: 4 méter a gyakorlatban az "egymás mellett állást" jelenti
-            if (dist <= 4) { 
-                triggerCatch(id);
-                break;
+                if (dist <= 4 && me.lat !== 0 && p.lat !== 0) { 
+                    triggerCatch(id);
+                    break;
+                }
+            }
+        }
+    } else if (me.role === 'chaser') {
+        // Ha fogó a játékos, akkor ő is képes kell legyen "aktívan" elkapni egy robotot!
+        // (A rendes embereket nem a fogó kapja el, hanem a menekülő telefonja jelzi az elkapást)
+        for (let id in state.players) {
+            if (id === state.userId || !id.startsWith('robot_')) continue;
+            const p = state.players[id];
+            
+            if (p.role === 'runner' && p.lat && p.lon) {
+                const dist = getDistance(me.lat, me.lon, p.lat, p.lon);
+                if (dist < nearestDist) nearestDist = dist;
+                
+                if (dist <= 4 && p.status === 'active') {
+                    // Robot elkapása!
+                    db.ref(`games/${state.gameId}/players/${id}`).update({ status: 'caught' });
+                    db.ref(`users/${me.name}/catches`).set(firebase.database.ServerValue.increment(1));
+                    playCatchSound();
+                    
+                    alert("💥 Elkaptad a Menekülő Robotot! Kaptál +1 Pontot a Toplistán!");
+                    if (id === robotId) stopRobot();
+                    else db.ref(`games/${state.gameId}/players/${id}`).remove();
+                    break;
+                }
             }
         }
     }
+
     document.getElementById('debug-nearest').innerText = nearestDist === 9999 ? '∞' : nearestDist.toFixed(1);
 }
 
