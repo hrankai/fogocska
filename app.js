@@ -215,10 +215,10 @@ function setupEventListeners() {
     // Restart (after catch)
     document.getElementById('restart-btn').addEventListener('click', resetGame);
 
-    const robotBtn = document.getElementById('spawn-robot');
-    if (robotBtn) {
-        robotBtn.addEventListener('click', toggleRobot);
-    }
+    const runnerRobotBtn = document.getElementById('spawn-runner-robot');
+    const chaserRobotBtn = document.getElementById('spawn-chaser-robot');
+    if (runnerRobotBtn) runnerRobotBtn.addEventListener('click', () => toggleRobot('runner'));
+    if (chaserRobotBtn) chaserRobotBtn.addEventListener('click', () => toggleRobot('chaser'));
 }
 
 function toggleSessionMode(mode) {
@@ -553,29 +553,36 @@ function triggerCatch(chaserId) {
 // --- VIRTUAL ROBOT LOGIC ---
 let robotId = null;
 let robotInterval = null;
+let currentRobotRole = null;
 
-function toggleRobot() {
+function toggleRobot(role) {
     if (robotId) {
+        const wasRole = currentRobotRole;
         stopRobot();
+        if (wasRole !== role) {
+            spawnRobot(role);
+        }
     } else {
-        spawnRobot();
+        spawnRobot(role);
     }
 }
 
-function spawnRobot() {
+function spawnRobot(role) {
     if (!state.user || !state.user.lat) return;
     
     robotId = 'robot_' + Math.random().toString(36).substr(2, 5);
-    const btn = document.getElementById('spawn-robot');
-    if (btn) btn.innerText = "Robot Törlése";
+    currentRobotRole = role;
+    
+    const btn = document.getElementById(`spawn-${role}-robot`);
+    if (btn) btn.innerText = "🛑 Leállítás";
 
-    // Spawn ~25m away (approx 0.0002 degrees)
+    // Pár méterre indítjuk magunktól (kb. 20-25m)
     let rLat = state.user.lat + 0.0002;
     let rLon = state.user.lon + 0.0002;
 
     const robotData = {
-        name: "🤖 Teszt Robot",
-        role: "chaser",
+        name: role === 'runner' ? "🤖 Menekülő Bot" : "🤖 Fogó Bot",
+        role: role,
         lat: rLat,
         lon: rLon,
         lastSeen: Date.now(),
@@ -590,16 +597,24 @@ function spawnRobot() {
             return;
         }
 
-        // Move 2m closer every second
-        // 1m is roughly 0.000009 degrees
-        const step = 0.000015; 
+        const step = 0.000015; // Kb. 1.5 - 2 méter / mp sebesség
         const dLat = state.user.lat - rLat;
         const dLon = state.user.lon - rLon;
         const dist = Math.sqrt(dLat*dLat + dLon*dLon);
 
-        if (dist > step) {
-            rLat += (dLat / dist) * step;
-            rLon += (dLon / dist) * step;
+        if (role === 'runner') {
+            // Ha menekülő robot, akkor ELFUT tőled (de csak fél sebességgel, hogy el tudd kapni!)
+            const runnerSpeed = step * 0.5;
+            if (dist < 0.002 && dist > 0.000001) { // Ne fusson el a térképről
+                rLat -= (dLat / dist) * runnerSpeed;
+                rLon -= (dLon / dist) * runnerSpeed;
+            }
+        } else {
+            // Ha fogó robot, akkor KERGET téged
+            if (dist > step) {
+                rLat += (dLat / dist) * step;
+                rLon += (dLon / dist) * step;
+            }
         }
 
         db.ref(`games/${state.gameId}/players/${robotId}`).update({
@@ -619,8 +634,12 @@ function stopRobot() {
         clearInterval(robotInterval);
         robotInterval = null;
     }
-    const btn = document.getElementById('spawn-robot');
-    if (btn) btn.innerText = "Robot Indítása";
+    
+    currentRobotRole = null;
+    const rnBtn = document.getElementById('spawn-runner-robot');
+    const chBtn = document.getElementById('spawn-chaser-robot');
+    if (rnBtn) rnBtn.innerText = "🏃‍♂️ Menekülő";
+    if (chBtn) chBtn.innerText = "🔴 Fogó";
 }
 
 // --- AUTH ---

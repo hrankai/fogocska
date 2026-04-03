@@ -89,7 +89,10 @@
                     <div>UID: <span id="debug-id">-</span></div>
                     <div>Grace: <span id="debug-grace">0</span>s</div>
                     <div>Közel: <span id="debug-nearest">∞</span>m</div>
-                    <button id="spawn-robot" class="btn-debug">Robot Indítása</button>
+                    <div style="display:flex; gap:5px; margin-top:5px;">
+                        <button id="spawn-runner-robot" class="btn-debug" style="flex:1;">🏃‍♂️ Menekülő</button>
+                        <button id="spawn-chaser-robot" class="btn-debug" style="flex:1;">🔴 Fogó</button>
+                    </div>
                 </div>
                 <div class="map-controls">
                     <button id="locate-me" class="btn-icon">📍</button>
