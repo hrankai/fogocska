@@ -429,9 +429,9 @@ function updateMarkers() {
             }
         }
         
-        // Radar logic: Ha nincs a fő térképen (mert 10m-nél messzebb van), akkor mutassa a Radar!
+        // Radar logic: Csak az ELLENSÉGET mutatja (aki más szerepben van mint te)!
         if (state.radarMap) {
-            const shouldShowRadar = dist > 10 && dist < 500;
+            const shouldShowRadar = dist > 10 && dist < 500 && p.role !== state.user.role;
             if (shouldShowRadar) {
                 if (!state.radarMarkers[id]) {
                     const iconColor = p.role === 'chaser' ? '#ff0055' : '#00f2ff';
