@@ -177,7 +177,7 @@ function checkBoundary(lat, lon) {
 
 function createIcon(role, isMe) {
     const color = role === 'chaser' ? '#ff0055' : '#00f2ff';
-    const size = isMe ? 24 : 18;
+    const size = isMe ? 32 : 24;
     return L.divIcon({
         className: 'custom-marker',
         html: `<div style="background: ${color}; width: ${size}px; height: ${size}px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px ${color};"></div>`
@@ -280,8 +280,20 @@ function listAvailableGames() {
         for (let id in games) {
             const g = games[id];
             
-            // Garbage Collection: Delete game if no players are inside AND it is older than 15 seconds
-            if (!g.players && (now - (g.createdAt || 0) > 15000)) {
+            // Garbage Collection: Delete game if no active real players are inside AND it is older than 15 seconds
+            let hasRealPlayer = false;
+            if (g.players) {
+                for (let pid in g.players) {
+                    if (!pid.startsWith('robot_')) {
+                        if (now - (g.players[pid].lastSeen || 0) < 60000) {
+                            hasRealPlayer = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!hasRealPlayer && (now - (g.createdAt || 0) > 15000)) {
                 db.ref(`games/${id}`).remove();
                 continue;
             }
@@ -437,7 +449,8 @@ function updateMarkers() {
                     const iconColor = p.role === 'chaser' ? '#ff0055' : '#00f2ff';
                     const icon = L.divIcon({
                         className: 'radar-dot',
-                        html: `<div style="background: ${iconColor}; width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 10px ${iconColor};"></div>`
+                        iconSize: [20, 20],
+                        html: `<div style="background: ${iconColor}; width: 100%; height: 100%; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px ${iconColor};"></div>`
                     });
                     state.radarMarkers[id] = L.marker([p.lat, p.lon], { icon }).addTo(state.radarMap);
                     
@@ -533,7 +546,7 @@ function checkProximity() {
                     
                     alert("💥 Elkaptad a Menekülő Robotot! Kaptál +1 Pontot a Toplistán!");
                     if (id === robotId) stopRobot();
-                    else db.ref(`games/${state.gameId}/players/${id}`).remove();
+                    // Ha más robotja, csak átállítjuk caught-ra (fentebb meg is történt), az övé majd törli
                     break;
                 }
             }
@@ -611,6 +624,14 @@ function spawnRobot(role) {
     };
 
     db.ref(`games/${state.gameId}/players/${robotId}`).set(robotData);
+    db.ref(`games/${state.gameId}/players/${robotId}`).onDisconnect().remove();
+
+    const statusRef = db.ref(`games/${state.gameId}/players/${robotId}/status`);
+    statusRef.on('value', (snap) => {
+        if (snap.val() === 'caught') {
+            stopRobot();
+        }
+    });
 
     robotInterval = setInterval(() => {
         if (!state.user || state.isCaught) {
@@ -648,6 +669,7 @@ function spawnRobot(role) {
 
 function stopRobot() {
     if (robotId && state.gameId) {
+        db.ref(`games/${state.gameId}/players/${robotId}/status`).off();
         db.ref(`games/${state.gameId}/players/${robotId}`).remove();
         robotId = null;
     }
