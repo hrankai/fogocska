@@ -399,8 +399,8 @@ input {
         width: 95%;
     }
     h1.logo-title {
-        font-size: 2.4rem;  /* Szöveg lekicsinyítése hogy kiférjen */
-        letter-spacing: 1px;
+        font-size: 13vw !important;  /* Dinamikusan követi a képernyő szélességét */
+        letter-spacing: -1px;
     }
     .message-card {
         padding: 1.5rem;
