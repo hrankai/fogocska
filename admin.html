@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Fogócska</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container" style="justify-content: center; align-items: center; background: #000;">
+        <div class="glass-card">
+            <h1 style="color: var(--accent-red); -webkit-text-fill-color: initial;">Adminisztráció</h1>
+            <p style="margin-bottom: 2rem;">Vigyázat! A gomb megnyomásával a teljes adatbázis törlődik.</p>
+            <button type="button" id="admin-clear-db" class="btn primary" style="background: var(--accent-red); color: white; width: 100%;">Teljes Adatbázis Törlése</button>
+            <a href="index.html" class="btn secondary" style="display: block; margin-top: 1rem; text-decoration: none;">Vissza a Játékba</a>
+        </div>
+    </div>
+    
+    <!-- Firebase SDK (v9 compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+    <script>
+        const firebaseConfig = {
+            databaseURL: "https://catch-19bbe-default-rtdb.firebaseio.com/" 
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        document.getElementById('admin-clear-db').addEventListener('click', (e) => {
+            e.preventDefault();
+            if (confirm("BIZTOSAN törlöd az ÖSSZES játékot, játékost és elkapási rekordot a Firebase szerverről?")) {
+                db.ref('/').remove()
+                .then(() => alert("Adatbázis törlés sikeres."))
+                .catch(err => alert("Hiba: " + err.message));
+            }
+        });
+    </script>
+</body>
+</html>

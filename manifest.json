@@ -1,0 +1,17 @@
+{
+  "name": "Fogócska",
+  "short_name": "Fogócska",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#05080f",
+  "theme_color": "#00f2ff",
+  "description": "Valós idejű GPS többjátékos fogócska",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ]
+}

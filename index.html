@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fogócska & Bújócska | Real-Time GPS</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#00f2ff">
+    <link rel="apple-touch-icon" href="icon.svg">
+    <link rel="stylesheet" href="style.css">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;800&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app" class="app-container">
+        <!-- Auth View -->
+        <section id="auth-view" class="view">
+            <div class="glass-card">
+                <h1>Game Login</h1>
+                <p class="subtitle">Valós idejű többjátékos fogócska</p>
+                <form id="login-form">
+                    <input type="text" id="username" placeholder="Felhasználónév" required>
+                    <div class="role-selector">
+                        <label>Válassz szerepet:</label>
+                        <div class="radio-group">
+                            <input type="radio" id="role-runner" name="role" value="runner" checked>
+                            <label for="role-runner">Menekülő</label>
+                            <input type="radio" id="role-chaser" name="role" value="chaser">
+                            <label for="role-chaser">Fogó</label>
+                        </div>
+                    </div>
+                    <div id="session-controls">
+                        <div class="session-mode-selector">
+                            <button type="button" id="mode-join" class="btn secondary active">Csatlakozás</button>
+                            <button type="button" id="mode-create" class="btn secondary">Létrehozás</button>
+                        </div>
+                        
+                        <div id="join-section">
+                            <select id="game-list" class="input-field">
+                                <option value="">Válassz egy szobát...</option>
+                            </select>
+                        </div>
+
+                        <div id="create-section" class="hidden">
+                            <input type="text" id="new-game-name" placeholder="Szoba neve" class="input-field">
+                            <p class="small-info">A határok kijelöléséhez kattints a lenti térképen (2 pont)!</p>
+                            <div id="mini-map" style="height: 250px; width: 100%; border-radius: 8px; margin-top: 10px; z-index: 1;"></div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn primary">Belépés a Játékba</button>
+                    <div style="display: flex; gap: 0.5rem; justify-content: center; margin-top: 1rem;">
+                        <button type="button" id="leaderboard-btn" class="btn small">🏆 Toplista</button>
+                    </div>
+                </form>
+                <p class="note">A belépéshez GPS engedély szükséges.</p>
+            </div>
+        </section>
+
+        <!-- Game View -->
+        <section id="game-view" class="view hidden">
+            <header class="game-header">
+                <div class="user-badge" id="player-badge">
+                    <span id="display-name">Név</span>
+                    <span id="display-role" class="role-chip">Rol</span>
+                </div>
+                <div class="game-stats">
+                    <span id="player-count">0 Játékos online</span>
+                </div>
+                <button id="logout-btn" class="btn small">Kilépés</button>
+            </header>
+            
+            <div id="map-container">
+                <div id="map"></div>
+                
+                <!-- Radar -->
+                <div id="radar-container">
+                    <div id="radar-map"></div>
+                    <div class="radar-scan"></div>
+                    <div class="radar-label">RADAR (50-500m)</div>
+                </div>
+
+                <!-- Debug Panel -->
+                <div id="debug-panel" class="debug-card">
+                    <div>UID: <span id="debug-id">-</span></div>
+                    <div>Grace: <span id="debug-grace">0</span>s</div>
+                    <div>Közel: <span id="debug-nearest">∞</span>m</div>
+                    <button id="spawn-robot" class="btn-debug">Robot Indítása</button>
+                </div>
+                <div class="map-controls">
+                    <button id="locate-me" class="btn-icon">📍</button>
+                </div>
+            </div>
+
+            <div id="boundary-overlay" class="overlay hidden">
+                <div class="message-card warning">
+                    <h2>KILÉPTÉL A PÁLYÁRÓL!</h2>
+                    <p>Menj vissza a kijelölt területre!</p>
+                </div>
+            </div>
+
+            <div id="grace-overlay" class="overlay hidden" style="background: rgba(0,0,0,0.8); z-index: 1500; pointer-events: none;">
+                <div style="font-size: 8rem; font-weight: 900; color: var(--primary-color); text-shadow: 0 0 30px var(--primary-color);" id="grace-countdown">5</div>
+            </div>
+
+            <div id="game-overlay" class="overlay hidden">
+                <div class="message-card">
+                    <h2 id="overlay-title">ELKAPTAK!</h2>
+                    <p id="overlay-text">Egy fogó melléd ért (pár méteren belülre)!</p>
+                    <button id="restart-btn" class="btn primary">Újra</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Leaderboard Modal -->
+        <div id="leaderboard-modal" class="overlay hidden" style="z-index: 3000;">
+            <div class="glass-card" style="max-height: 80vh; overflow-y: auto;">
+                <h2>🏆 Toplista (Legjobb Fogók)</h2>
+                <ul id="leaderboard-list" class="leaderboard-list">
+                    <li>Betöltés...</li>
+                </ul>
+                <button type="button" id="close-leaderboard" class="btn secondary" style="margin-top: 1.5rem; width: 100%;">Bezárás</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- Firebase SDK (v9 compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+    
+    <script src="app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').then(reg => {
+                    console.log('App telepítési háttérfolyamat regisztrálva.');
+                });
+            });
+        }
+    </script>
+</body>
+</html>
